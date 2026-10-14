@@ -35,6 +35,7 @@ def create_parser(protocol: str):
     parser_factories = {
         "CRSF": CRSFParser,
         "SBUS": SBUSParser,
+        "SBUS2": SBUSParser,
         "F.PORT": FPortParser,
         "GHST": GHSTParser,
         "IBUS": IBUSParser,
@@ -98,7 +99,10 @@ class SerialWorker:
                 pass
 
     def _emit(self, kind: str, payload: Any = None) -> None:
-        self.events.put((f"{self.event_prefix}{kind}", payload))
+        try:
+            self.events.put_nowait((f"{self.event_prefix}{kind}", payload))
+        except Full:
+            pass
 
     def _run(self) -> None:
         try:
@@ -125,6 +129,7 @@ class SerialWorker:
                 waiting = self._serial.in_waiting
                 data = self._serial.read(max(1, min(waiting, 4096)))
                 if data:
+                    self._emit("raw", (monotonic(), bytes(data)))
                     for frame in parser.feed(data):
                         self._emit("frame", frame)
                     drain_packets = getattr(parser, "drain_packets", None)
@@ -305,6 +310,21 @@ class ScanWorker:
                         if data:
                             for parser in parsers.values():
                                 parser.feed(data)
+                            best_name, best_parser = max(
+                                parsers.items(),
+                                key=lambda item: item[1].stats.channel_frames,
+                            )
+                            self.events.put(
+                                (
+                                    "scan_observation",
+                                    (
+                                        baudrate,
+                                        uart_format,
+                                        best_name,
+                                        best_parser.stats.channel_frames,
+                                    ),
+                                )
+                            )
                         found_protocol = self._find_confident_protocol(parsers)
                         if found_protocol is not None:
                             profile = PROTOCOL_BY_NAME.get(found_protocol)

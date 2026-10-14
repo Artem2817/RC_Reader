@@ -1,170 +1,94 @@
-# RC Reader — Universal RC Protocol Lab
+# RC Reader
 
-RC Reader — автономный Windows-инструмент для диагностики RC-приёмников,
-последовательных радиопротоколов и полётных контроллеров. Он читает каналы из
-COM-порта, автоматически ищет нестандартные настройки UART, анализирует качество
-сигнала, разбирает пакеты, сравнивает два приёмника и умеет генерировать либо
-конвертировать RC-поток.
+RC Reader is a Windows desktop workstation for receiving, detecting, inspecting and generating serial RC protocols. The application uses a Qt 6 interface and keeps UART I/O, protocol parsing and frame generation out of the GUI thread.
 
-Готовый `RC_Reader.exe` не требует установки Python.
+## Features
 
-## Поддерживаемые входные протоколы
+- live display of the channel count actually supplied by the receiver, up to 32 channels;
+- frame rate, valid/error counters, frame-lost and failsafe state;
+- asynchronous protocol and UART auto-detection with multi-frame confidence checks;
+- bounded RX/TX HEX log, timestamps and decoded packet fields;
+- periodic binary RC generation independent of GUI refresh timing;
+- Manual, Sweep, Step, Preset and Sequence generator modes;
+- JSON generator profiles;
+- explicit warning when inverted or half-duplex signalling needs additional hardware;
+- CH340/CH341, CP210x, FTDI and CDC/standard serial-port identification.
 
-| Протокол | Что декодируется | Типовой UART |
-|---|---|---|
-| CRSF | `RC_CHANNELS_PACKED 0x16`, subset `0x17`, Link Statistics, GPS, Vario, Battery, Baro, Attitude, Flight Mode, Device Info | 420000 / 416666, 8N1 |
-| GHST / Ghost | 16 каналов, legacy и 12-bit кадры, RSSI/LQ | 420000, 8N1 |
-| SBUS / SBUS2 | 16 аналоговых каналов, CH17/18, frame lost, failsafe | 100000, 8E2 |
-| FrSky F.Port | RC control, RSSI, escaping, checksum, frame lost, failsafe | 115200, 8N1 |
-| FlySky iBUS | 14 каналов и расширенный 18-канальный формат, checksum | 115200, 8N1 |
-| Graupner SUMD | V1/V3, до 32 каналов, CRC16, failsafe | 115200, 8N1 |
-| Spektrum DSM2 | 1024 resolution, спутниковые пакеты | 125000 / 115200, 8N1 |
-| Spektrum DSMX | 2048 resolution, накопление до 12 каналов | 125000 / 115200, 8N1 |
-| MAVLink 1/2 | `RC_CHANNELS`, `RC_CHANNELS_RAW` и `RC_CHANNELS_SCALED`, CRC Extra | 115200 / 57600, 8N1 |
+## Protocol support
 
-Скорость можно ввести вручную. Поддерживаемые форматы UART: `8N1`, `8N2`,
-`8E1`, `8E2`, `8O1`, `8O2`.
+| Protocol | RX | TX | Default UART | Notes |
+|---|:---:|:---:|---|---|
+| CRSF / ELRS | yes | yes | 420000 8N1 | ELRS uses CRSF on the wire |
+| SBUS | yes | yes | 100000 8E2 | normally requires hardware inversion |
+| SBUS2 | RC frames | yes | 100000 8E2 | SBUS2 telemetry slots are not generated |
+| iBUS | yes | yes | 115200 8N1 | 14-channel TX, 14/18-channel RX |
+| SUMD | yes | yes | 115200 8N1 | CRC16, up to 32-channel RX |
+| F.Port | yes | no | 115200 8N1 | inverted half-duplex hardware is often required |
+| GHST | yes | no | 420000 8N1 | half-duplex wiring |
+| DSM2 1024 | yes | no | 125000 8N1 | 3.3 V satellite interface |
+| DSMX 2048 | yes | no | 125000 8N1 | 3.3 V satellite interface |
+| MAVLink 1/2 RC messages | yes | no | 115200 8N1 | RC_CHANNELS family |
 
-## Основные вкладки
+SRXL2 is not advertised because the repository does not yet contain a verified parser or encoder. RX-only protocols are hidden from the Generator page rather than simulated.
 
-### Каналы
+## Installation and launch
 
-- до 32 каналов одновременно;
-- RAW, микросекунды и проценты;
-- CH17/18, failsafe и frame lost;
-- RSSI, Link Quality, GPS, батарея и другие метаданные.
-
-### График / Jitter
-
-- живой осциллограф выбранного канала;
-- наложение CH1–CH4 разными цветами;
-- окна 2, 5, 10, 30 и 60 секунд;
-- min/max, частота кадров и jitter;
-- пауза графика и временные маркеры.
-
-### Signal Lab
-
-- реальная частота и средний интервал кадров;
-- jitter и гистограмма интервалов;
-- количество dropout, frame lost и failsafe;
-- самая длинная пауза между кадрами;
-- min/max/mean и дрожание каждого канала;
-- измерение шума около центрального положения;
-- классификация каналов как analog/switch/constant;
-- настраиваемые тревоги по dropout, jitter и Link Quality;
-- звуковое предупреждение;
-- виртуальные стики;
-- мастер поиска Roll, Pitch, Throttle, Yaw и AUX-каналов;
-- экспорт полного HTML или PDF-отчёта.
-
-### RAW-кадры и Packet Inspector
-
-В памяти отображаются последние 400 кадров с временем, протоколом, типом,
-размером и состоянием. При выборе кадра Packet Inspector показывает:
-
-- offset и длину каждого поля;
-- адрес, длину, тип и payload;
-- packed channels и flags;
-- checksum/CRC;
-- MAVLink Message ID;
-- CRSF-телеметрию и метаданные;
-- полный HEX кадра.
-
-### Dual Port / TX
-
-Второй COM-порт работает в одном из трёх режимов:
-
-1. **Сравнение RX** — два приёмника читаются одновременно. Показываются разница
-   каналов и разница времени прихода последних кадров.
-2. **Конвертер TX** — входные каналы с первого COM-порта кодируются и выводятся
-   во второй COM-порт.
-3. **Генератор TX** — виртуальные ползунки создают тестовый RC-сигнал с частотой
-   от 25 до 500 Hz.
-
-Выходные кодировщики: CRSF, SBUS, iBUS и SUMD.
-
-## Умный автоскан
-
-Автоскан не привязан к стандартным профилям. На каждом сочетании скорости и
-UART-формата одновременно работают все декодеры.
-
-- 132 встроенных сочетания;
-- скорости от 4800 до 2000000 бод;
-- все варианты `8N1/8N2/8E1/8E2/8O1/8O2`;
-- вручную введённая скорость и текущий UART проверяются первыми;
-- стандартные RC-профили имеют повышенный приоритет;
-- результат содержит процент уверенности;
-- при слабом совпадении выводятся три наиболее вероятных варианта;
-- для DSM используется усиленная проверка против ложного распознавания.
-
-Например, SBUS `115200 8N1` будет найден, хотя это нестандартное сочетание.
-
-## Запись, Replay и экспорт
-
-- `.rclog` хранит время, каналы, исходный кадр, flags и метаданные;
-- Replay воспроизводит сессию с исходным таймингом;
-- CSV содержит RAW и микросекунды для каждого канала;
-- HTML-отчёт содержит сводку, таблицу каналов и журнал событий;
-- PDF-отчёт создаётся без внешних программ.
-
-## Плагины протоколов
-
-Внешние декодеры можно положить в каталог `plugins` рядом с EXE. Каждый
-Python-файл должен экспортировать `PROTOCOL_SPEC` и `create_parser()`.
-Минимальный шаблон и описание находятся в
-[`plugins/README.md`](plugins/README.md).
-
-Плагины являются исполняемым кодом — используйте только доверенные файлы.
-
-## Запуск
+The ready-to-run Windows application does not require Python:
 
 ```powershell
 .\dist\RC_Reader.exe
 ```
 
-Либо запустите `start.bat`.
-
-### Из исходников
-
-Нужен Python 3.10+ с Tkinter:
+You can also double-click `start.bat`. To run from source, Python 3.10 or newer is required:
 
 ```powershell
-py -m pip install -r requirements.txt
-py main.py
+python -m pip install -r requirements.txt
+python main.py
 ```
 
-## Подключение
+`start.bat` runs the source entry point. A standalone Windows build is available as `dist\\RC_Reader.exe`.
 
-1. Соедините GND приёмника и USB-UART.
-2. Для чтения подключите TX приёмника к RX адаптера.
-3. Выберите COM-порт.
-4. Введите предполагаемую скорость и формат — автоскан проверит их первыми.
-5. Нажмите **Автоскан** или подключитесь вручную.
-
-Для режима TX подключите TX второго адаптера к RX тестируемого устройства.
-
-## Электрическая безопасность и ограничения
-
-- Не соединяйте два активных выхода TX.
-- Проверьте напряжение логики. Spektrum satellite обычно использует 3.3 В.
-- SBUS и F.Port часто электрически инвертированы. Программа может определить
-  признаки неправильной настройки, но не способна физически инвертировать
-  сигнал обычного USB-UART.
-- GHST и F.Port используют однопроводный half-duplex. Нужны правильное
-  согласование, направление линии и иногда внешний инвертор.
-- Не все UART-адаптеры и Windows-драйверы поддерживают 420000, 416666, 125000
-  и другие нестандартные скорости.
-- Один COM-порт нельзя одновременно открыть в двух программах или сразу как
-  RX и TX в RC Reader.
-- Генератор и конвертер предназначены для стендовой проверки. Перед подачей
-  сигнала на реальную аппаратуру снимите пропеллеры и отключите силовую часть.
-
-## Тесты
+To rebuild the executable:
 
 ```powershell
-py -m unittest discover -s tests -v
+python -m pip install -r requirements.txt pyinstaller
+python -m PyInstaller --clean --noconfirm RC_Reader.spec
 ```
 
-Тесты покрывают входные декодеры, CRC/checksum, нестандартный автоскан,
-выходные кодировщики, Signal Lab, калибровку, сравнение двух RX, Packet
-Inspector, CRSF-телеметрию, логи, CSV, HTML и PDF.
+## Safe transmission
+
+TX never starts automatically. Select a port and protocol, set safe channel values, then press **Start TX** and confirm the hardware warning. **EMERGENCY STOP** halts the generator immediately, and closing the application also requests an immediate stop. Transmission is never resumed after reconnecting an adapter.
+
+Most CH340/CH341 adapters can transmit ordinary iBUS, SUMD and CRSF data when their driver accepts the selected baud rate. They do not normally provide the inverted electrical signal required by SBUS. Use a hardware inverter or a UART adapter that explicitly supports inversion. Half-duplex protocols may also require an external interface.
+
+## Architecture
+
+```text
+rc_reader/
+├── app.py                         # lightweight application entry point
+├── core/
+│   ├── protocol_registry.py       # protocol capabilities and common adapter API
+│   ├── generator.py               # periodic TX service and JSON profiles
+│   └── ports.py                   # USB-UART discovery and hardware warnings
+├── ui/
+│   ├── main_window.py             # navigation and bounded event dispatch
+│   ├── pages.py                   # Monitor, Generator and Diagnostics pages
+│   ├── widgets.py                 # reusable channel widgets
+│   └── theme.py                   # dark Qt stylesheet
+├── protocols.py                   # streaming protocol parsers
+├── encoder.py                     # binary frame encoders
+├── serial_worker.py               # RX and auto-detect workers
+└── inspector.py                   # decoded packet structure
+```
+
+The GUI polls a bounded event queue at 30 ms intervals. Serial readers, auto-detection and periodic transmission run in background threads. Protocol parsers recover synchronization from incomplete frames and noisy input.
+
+## Tests
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+The suite covers parsers, CRC/checksum handling, partial and corrupted streams, synchronization recovery, auto-detection confidence, fixed iBUS reference output, all TX encoders, capability declarations, generator profile validation, packet inspection and exports.
+
+Hardware-dependent behavior still needs loopback or receiver testing on the target Windows machine because driver support for unusual baud rates varies by adapter.

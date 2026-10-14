@@ -1,5 +1,10 @@
 __pycache__/
 *.py[cod]
+.codex-deps/
+.build-deps/
+.pyinstaller/
+build/
+ui-preview.png
 .venv/
 venv/
 .idea/
